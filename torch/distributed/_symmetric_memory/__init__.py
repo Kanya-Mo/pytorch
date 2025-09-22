@@ -12,6 +12,7 @@ from functools import partial
 from typing import Any, Callable, Literal
 
 import torch
+import torch.distributed as dist
 import torch.distributed._functional_collectives as funcol
 import torch.distributed.distributed_c10d as c10d
 from torch._C._autograd import DeviceType
@@ -127,7 +128,7 @@ def get_symm_mem_workspace(group_name: str, min_size: int) -> _SymmetricMemory:
             (max(size, min_size),),
             [1],
             torch.uint8,
-            torch.accelerator.current_accelerator(),
+            torch.device(torch.accelerator.current_device_index()),
             group_name,
         )
         _group_name_to_workspace_tensor[group_name] = tensor
