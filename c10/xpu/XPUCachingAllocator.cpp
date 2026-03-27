@@ -510,6 +510,8 @@ class DeviceCachingAllocator {
   ska::flat_hash_map<MempoolId_t, PrivatePool*, MempoolIdHash>
       graph_pools_freeable;
 
+  std::vector<AllocatorTraceTracker> trace_trackers_;
+
   size_t try_merge_blocks(Block* dst, Block* src, BlockPool& pool) {
     if (!src || src->allocated || src->event_count > 0 ||
         !src->stream_uses.empty() || dst->mapped != src->mapped) {
@@ -1545,7 +1547,7 @@ class DeviceCachingAllocator {
       c10::DeviceIndex device,
       MempoolId_t mempool_id,
       std::shared_ptr<GatheredContext> context) {
-    if (!record_history)
+    if (!record_history && trace_trackers_.empty())
       return;
     bool should_skip = skip_actions_list.count(action) > 0;
     if (should_skip)
@@ -1559,6 +1561,11 @@ class DeviceCachingAllocator {
         mempool_id,
         getApproximateTime(),
         record_context_ >= RecordContext::ALLOC ? std::move(context) : nullptr);
+
+    for (const auto& cb : trace_trackers_) {
+      cb(te);
+    }
+
     alloc_buffer.insertEntries(te);
   }
 
@@ -1677,6 +1684,11 @@ class DeviceCachingAllocator {
     if (!enabled || clearHistory) {
       alloc_buffer.clear();
     }
+  }
+
+  void attachAllocatorTraceTracker(AllocatorTraceTracker tracker) {
+      std::unique_lock<std::recursive_mutex> lock(mutex);
+      trace_trackers_.emplace_back(std::move(tracker));
   }
 
   std::pair<size_t, size_t> getMemoryInfo() {
@@ -2001,6 +2013,12 @@ class NativeCachingAllocator : public XPUAllocator {
           when,
           clearHistory,
           skip_actions);
+    }
+  }
+
+  void attachAllocatorTraceTracker(AllocatorTraceTracker tracker) override {
+    for (auto& allocator : device_allocators) {
+      allocator->attachAllocatorTraceTracker(tracker);
     }
   }
 
