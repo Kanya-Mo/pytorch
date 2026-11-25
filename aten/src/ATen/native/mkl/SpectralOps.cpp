@@ -510,6 +510,14 @@ static Tensor& _exec_fft(Tensor& out, const Tensor& self, IntArrayRef out_sizes,
 #endif
 #endif
 
+  // oneMKL multi-dimensional c2c transforms can write past an internal
+  // workspace and corrupt the heap when the innermost signal dim is not
+  // unit-stride: https://github.com/pytorch/pytorch/issues/204586
+  const bool is_c2c = input.is_complex() && out.is_complex();
+  if (signal_ndim > 1 && is_c2c && input.strides().back() != 1) {
+    input = input.clone(MemoryFormat::Contiguous);
+  }
+
   auto descriptor = _plan_mkl_fft(
       input.strides(), out.strides(), signal_size, input.is_complex(),
       out.is_complex(), normalization, forward, value_type);

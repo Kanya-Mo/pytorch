@@ -595,6 +595,22 @@ class TestFFT(TestCase):
             actual = torch.fft.ihfftn(input, dim=dim, norm="ortho")
             self.assertEqual(expect, actual)
 
+    @skipCPUIfNoFFT
+    @onlyNativeDeviceTypes
+    @unittest.skipIf(not TEST_NUMPY, 'NumPy not found')
+    @dtypes(torch.complex64)
+    def test_fftn_strided_innermost(self, device, dtype):
+        # oneMKL multi-dim c2c transforms whose innermost signal dim is not unit-stride used to corrupt the heap
+        # https://github.com/pytorch/pytorch/issues/204586
+        x = torch.randn(10, 512, 257, device=device, dtype=dtype)
+        y = torch.randn(10, 1024, device=device, dtype=dtype)[:, ::2]
+        cases = [("fftn", x, (0, 1)), ("ifftn", x, (0, 1)), ("irfftn", x, (0, 1, 2)), ("fftn", y, (0, 1))]
+        for _ in range(4):
+            for name, inp, dim in cases:
+                expected = getattr(np.fft, name)(inp.cpu().numpy(), axes=dim, norm="ortho")
+                actual = getattr(torch.fft, name)(inp, dim=dim, norm="ortho")
+                self.assertEqual(actual, expected, exact_dtype=False)
+
 
     # 2d-fft tests
 
